@@ -118,7 +118,7 @@
             }
         }
 
-        // 5. ฟังก์ชันส่งข้อมูลเข้า Google Sheets
+      // 5. ฟังก์ชันส่งข้อมูลเข้า Google Sheets
         async function submitCheckIn() {
             if (!currentLat || !currentLng) {
                 alert("กรุณากดอัปเดตตำแหน่ง GPS ก่อนครับ");
@@ -142,25 +142,23 @@
             };
 
             try {
-                const response = await fetch(webAppUrl, {
+                // อัปเดตการตั้งค่า fetch โดยเพิ่ม mode: 'no-cors'
+                await fetch(webAppUrl, {
                     method: 'POST',
+                    mode: 'no-cors', // <--- พระเอกของเราคือบรรทัดนี้ครับ บังคับข้ามการบล็อกของ iOS/LINE
                     headers: {
-                        "Content-Type": "text/plain;charset=utf-8",
+                        "Content-Type": "text/plain",
                     },
                     body: JSON.stringify(payload)
                 });
                 
-                // ตรวจสอบว่าระบบส่งข้อมูลได้หรือไม่
-                if (!response.ok) {
-                    throw new Error("เครือข่ายมีปัญหา หรือ URL ไม่ถูกต้อง");
-                }
-
+                // ถ้าระบบยิงข้อมูลออกไปได้โดยไม่ติด Error ให้ถือว่าสำเร็จและปิดหน้าต่างเลย
                 alert("✅ เช็คอินสำเร็จเรียบร้อยครับ!");
                 liff.closeWindow(); 
+
             } catch (error) {
                 console.error("Error:", error);
-                // เปลี่ยนข้อความแจ้งเตือนให้บอกสาเหตุตรงๆ
-                alert("❌ เกิดข้อผิดพลาด: " + error.message);
+                alert("❌ เกิดข้อผิดพลาดในการส่งข้อมูล: " + error.message);
                 btn.innerText = originalText;
                 btn.disabled = false;
             }
@@ -169,6 +167,7 @@
 </body>
 
 </html>
+
 
 
 
