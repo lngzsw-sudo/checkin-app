@@ -40,19 +40,27 @@
         </button>
     </div>
 
-    <script>
-        // 1. กำหนด LIFF ID (ต้องไปสร้างใน LINE Developers Console)
-        const liffId = "2009432864-KJ96TCzs";
+<script>
+        // 1. ใส่ ID และ URL ของคุณตรงนี้
+        const liffId = "YOUR_LIFF_ID_HERE"; // ใส่ LIFF ID ของคุณเหมือนเดิม
+        const webAppUrl = "YOUR_WEB_APP_URL_HERE"; // <--- เอา URL ที่ลงท้ายด้วย /exec มาวางตรงนี้
 
-        // 2. เริ่มต้นระบบ LIFF เพื่อดึงชื่อและรูปโปรไฟล์ LINE
+        // ตัวแปรสำหรับเก็บข้อมูลชั่วคราว
+        let displayName = "พนักงาน (ไม่ทราบชื่อ)";
+        let currentLat = null;
+        let currentLng = null;
+        let base64Image = null;
+
+        // 2. เริ่มต้น LIFF และดึงชื่อโปรไฟล์
         async function main() {
             try {
                 await liff.init({ liffId: liffId });
                 if (liff.isLoggedIn()) {
                     const profile = await liff.getProfile();
-                    document.getElementById("profile-info").innerHTML = `สวัสดีคุณ <b>${profile.displayName}</b>`;
+                    displayName = profile.displayName; // เก็บชื่อพนักงานไว้ส่งเข้า Sheets
+                    document.getElementById("profile-info").innerHTML = `สวัสดีคุณ <b>${displayName}</b>`;
                 } else {
-                    liff.login(); // บังคับล็อกอินถ้าเปิดผ่านเว็บเบราว์เซอร์ปกติ
+                    liff.login();
                 }
             } catch (err) {
                 console.error("LIFF Init Error: ", err);
@@ -61,10 +69,7 @@
         }
         main();
 
-        // 3. ฟังก์ชันดึง GPS (HTML5 Geolocation)
-        let currentLat = null;
-        let currentLng = null;
-
+        // 3. ฟังก์ชันดึง GPS
         function getLocation() {
             document.getElementById("gps-status").innerText = "กำลังค้นหาตำแหน่ง...";
             if (navigator.geolocation) {
@@ -77,48 +82,74 @@
                     (error) => {
                         document.getElementById("gps-status").innerText = "❌ ไม่สามารถดึงพิกัดได้ (กรุณาเปิด GPS)";
                     },
-                    { enableHighAccuracy: true } // พยายามใช้ GPS ที่แม่นยำที่สุด
+                    { enableHighAccuracy: true }
                 );
             } else {
                 document.getElementById("gps-status").innerText = "อุปกรณ์นี้ไม่รองรับ GPS";
             }
         }
 
-        // 4. ฟังก์ชันพรีวิวรูปภาพบนหน้าเว็บ
-        let photoFile = null;
+        // 4. ฟังก์ชันพรีวิวและแปลงรูปภาพเป็นโค้ด Base64
         function previewImage(event) {
             const file = event.target.files[0];
             if (file) {
-                photoFile = file;
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     const img = document.getElementById("preview");
                     img.src = e.target.result;
                     img.style.display = "block";
+                    base64Image = e.target.result; // <--- เก็บรูปที่แปลงเป็น Base64 แล้วเตรียมส่ง
                 }
                 reader.readAsDataURL(file);
             }
         }
 
-        // 5. ฟังก์ชันเตรียมส่งข้อมูลเข้า Backend
-        function submitCheckIn() {
+        // 5. ฟังก์ชันส่งข้อมูลเข้า Google Sheets
+        async function submitCheckIn() {
             if (!currentLat || !currentLng) {
                 alert("กรุณากดอัปเดตตำแหน่ง GPS ก่อนครับ");
                 return;
             }
-            if (!photoFile) {
+            if (!base64Image) {
                 alert("กรุณาถ่ายรูปชุดแต่งกายปัจจุบันครับ");
                 return;
             }
             
-            // ตรงนี้จะเป็นส่วนประกอบข้อมูล (Payload) เพื่อยิง API ไปยัง Backend
-            console.log("พร้อมส่งข้อมูล: ", { lat: currentLat, lng: currentLng, image: photoFile.name });
-            alert(`จำลองการส่งข้อมูลสำเร็จ!\nพิกัด: ${currentLat}, ${currentLng}`);
-            
-            // ปิดหน้าต่าง LIFF อัตโนมัติเมื่อเช็คอินเสร็จ (ใช้ได้เมื่อรันใน LINE)
-            // liff.closeWindow(); 
+            // เปลี่ยนหน้าตาปุ่มเพื่อบอกว่ากำลังประมวลผล (ป้องกันการกดเบิ้ล)
+            const btn = document.querySelector("button[onclick='submitCheckIn()']");
+            const originalText = btn.innerText;
+            btn.innerText = "กำลังบันทึกข้อมูล... ⏳";
+            btn.disabled = true;
+
+            // จัดเตรียมแพ็กเกจข้อมูล (Payload)
+            const payload = {
+                name: displayName,
+                lat: currentLat,
+                lng: currentLng,
+                image: base64Image
+            };
+
+            try {
+                // ยิงข้อมูลไปที่ Google Apps Script
+                await fetch(webAppUrl, {
+                    method: 'POST',
+                    headers: {
+                        "Content-Type": "text/plain;charset=utf-8",
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                alert("✅ เช็คอินสำเร็จเรียบร้อยครับ!");
+                liff.closeWindow(); // สั่งปิดหน้าต่าง LIFF อัตโนมัติเมื่อเช็คอินเสร็จ
+            } catch (error) {
+                console.error("Error:", error);
+                alert("❌ เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่ครับ");
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
         }
     </script>
 </body>
 
 </html>
+
