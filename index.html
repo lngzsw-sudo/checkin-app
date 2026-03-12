@@ -39,25 +39,23 @@
             ยืนยันการเช็คอิน
         </button>
     </div>
-
 <script>
-        // 1. ใส่ ID และ URL ของคุณตรงนี้
-        const liffId = "2009432864-KJ96TCzs"; // ใส่ LIFF ID ของคุณเหมือนเดิม
-        const webAppUrl = "https://script.google.com/macros/s/AKfycbzK54WKTB0oDgQDhzjiOsEYRQtNCoq8-x5iz7H-j_hJj3ZUiAnoIKwck0LOB-7lf4xo/exec"; // <--- เอา URL ที่ลงท้ายด้วย /exec มาวางตรงนี้
+        // 1. ใส่ ID และ URL ของคุณตรงนี้ (เอาของคุณมาใส่เหมือนเดิมนะครับ)
+        const liffId = "2009432864-KJ96TCzs"; 
+        const webAppUrl = "https://script.google.com/macros/s/AKfycbzK54WKTB0oDgQDhzjiOsEYRQtNCoq8-x5iz7H-j_hJj3ZUiAnoIKwck0LOB-7lf4xo/exec"; 
 
-        // ตัวแปรสำหรับเก็บข้อมูลชั่วคราว
         let displayName = "พนักงาน (ไม่ทราบชื่อ)";
         let currentLat = null;
         let currentLng = null;
         let base64Image = null;
 
-        // 2. เริ่มต้น LIFF และดึงชื่อโปรไฟล์
+        // 2. เริ่มต้น LIFF
         async function main() {
             try {
                 await liff.init({ liffId: liffId });
                 if (liff.isLoggedIn()) {
                     const profile = await liff.getProfile();
-                    displayName = profile.displayName; // เก็บชื่อพนักงานไว้ส่งเข้า Sheets
+                    displayName = profile.displayName; 
                     document.getElementById("profile-info").innerHTML = `สวัสดีคุณ <b>${displayName}</b>`;
                 } else {
                     liff.login();
@@ -80,7 +78,7 @@
                         document.getElementById("gps-status").innerText = `พิกัดปัจจุบัน: ${currentLat.toFixed(6)}, ${currentLng.toFixed(6)}`;
                     },
                     (error) => {
-                        document.getElementById("gps-status").innerText = "❌ ไม่สามารถดึงพิกัดได้ (กรุณาเปิด GPS)";
+                        document.getElementById("gps-status").innerText = "❌ ไม่สามารถดึงพิกัดได้";
                     },
                     { enableHighAccuracy: true }
                 );
@@ -89,16 +87,32 @@
             }
         }
 
-        // 4. ฟังก์ชันพรีวิวและแปลงรูปภาพเป็นโค้ด Base64
+        // 4. ฟังก์ชันพรีวิวและ **บีบอัดรูปภาพ (ลดขนาดไฟล์)**
         function previewImage(event) {
             const file = event.target.files[0];
             if (file) {
                 const reader = new FileReader();
                 reader.onload = function(e) {
-                    const img = document.getElementById("preview");
+                    const imgPreview = document.getElementById("preview");
+                    imgPreview.src = e.target.result;
+                    imgPreview.style.display = "block";
+
+                    // กระบวนการบีบอัดรูปภาพด้วย Canvas
+                    const img = new Image();
+                    img.onload = function() {
+                        const canvas = document.createElement("canvas");
+                        const MAX_WIDTH = 800; // กำหนดความกว้างสูงสุดแค่ 800px
+                        const scaleSize = MAX_WIDTH / img.width;
+                        canvas.width = MAX_WIDTH;
+                        canvas.height = img.height * scaleSize;
+
+                        const ctx = canvas.getContext("2d");
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        
+                        // แปลงรูปที่ย่อแล้วเป็น Base64 (คุณภาพ 70%)
+                        base64Image = canvas.toDataURL("image/jpeg", 0.7); 
+                    }
                     img.src = e.target.result;
-                    img.style.display = "block";
-                    base64Image = e.target.result; // <--- เก็บรูปที่แปลงเป็น Base64 แล้วเตรียมส่ง
                 }
                 reader.readAsDataURL(file);
             }
@@ -115,13 +129,11 @@
                 return;
             }
             
-            // เปลี่ยนหน้าตาปุ่มเพื่อบอกว่ากำลังประมวลผล (ป้องกันการกดเบิ้ล)
             const btn = document.querySelector("button[onclick='submitCheckIn()']");
             const originalText = btn.innerText;
             btn.innerText = "กำลังบันทึกข้อมูล... ⏳";
             btn.disabled = true;
 
-            // จัดเตรียมแพ็กเกจข้อมูล (Payload)
             const payload = {
                 name: displayName,
                 lat: currentLat,
@@ -130,20 +142,25 @@
             };
 
             try {
-                // ยิงข้อมูลไปที่ Google Apps Script
-                await fetch(webAppUrl, {
+                const response = await fetch(webAppUrl, {
                     method: 'POST',
                     headers: {
                         "Content-Type": "text/plain;charset=utf-8",
                     },
                     body: JSON.stringify(payload)
                 });
+                
+                // ตรวจสอบว่าระบบส่งข้อมูลได้หรือไม่
+                if (!response.ok) {
+                    throw new Error("เครือข่ายมีปัญหา หรือ URL ไม่ถูกต้อง");
+                }
 
                 alert("✅ เช็คอินสำเร็จเรียบร้อยครับ!");
-                liff.closeWindow(); // สั่งปิดหน้าต่าง LIFF อัตโนมัติเมื่อเช็คอินเสร็จ
+                liff.closeWindow(); 
             } catch (error) {
                 console.error("Error:", error);
-                alert("❌ เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่ครับ");
+                // เปลี่ยนข้อความแจ้งเตือนให้บอกสาเหตุตรงๆ
+                alert("❌ เกิดข้อผิดพลาด: " + error.message);
                 btn.innerText = originalText;
                 btn.disabled = false;
             }
@@ -152,5 +169,6 @@
 </body>
 
 </html>
+
 
 
